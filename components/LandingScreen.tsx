@@ -74,7 +74,7 @@ export default function LandingScreen({ onOpen }: LandingScreenProps) {
 
           {/* Mode hints — interactive */}
           <div className="flex items-center gap-2.5 pt-0.5">
-            {['Ghost', 'Web', 'Rain'].map((m) => (
+            {['Ghost', 'Rain'].map((m) => (
               <button
                 key={m}
                 onClick={onOpen}

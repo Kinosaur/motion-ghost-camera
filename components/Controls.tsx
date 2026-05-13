@@ -4,7 +4,6 @@ import type { VisualMode } from './GhostCamera';
 
 const MODES: { id: VisualMode; label: string }[] = [
   { id: 'ghost', label: 'Ghost' },
-  { id: 'web',   label: 'Web'   },
   { id: 'rain',  label: 'Rain'  },
 ];
 
@@ -64,14 +63,14 @@ export default function Controls({
         <div className="flex flex-col gap-6">
           <Slider
             label="Sensitivity"
-            hint={mode === 'web' ? 'void softness' : mode === 'rain' ? 'motion threshold' : 'detection level'}
+            hint={mode === 'rain' ? 'motion threshold' : 'detection level'}
             value={sensitivity}
             onChange={onSensitivityChange}
             onInteract={onInteract}
           />
           <Slider
             label="Trail"
-            hint={mode === 'web' ? 'shadow linger' : mode === 'rain' ? 'rain density' : 'ghost persistence'}
+            hint={mode === 'rain' ? 'rain density' : 'ghost persistence'}
             value={trailLength}
             onChange={onTrailLengthChange}
             onInteract={onInteract}

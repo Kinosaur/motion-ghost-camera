@@ -1,11 +1,11 @@
 {
   "name": "motion-ghost-camera",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "private": false,
   "license": "MIT",
-  "description": "A camera app that only reveals movement. Visualize motion in real-time with three visual modes: ghost (colored aura), web (falling constellation), and rain (blue drops). Processes video locally.",
+  "description": "A camera that only reveals movement. GPU-accelerated motion visualization with Ghost and Rain modes. All processing local, nothing leaves your device.",
   "author": "Kaung Khant Lin",
-  "keywords": ["camera", "motion-detection", "motion-visualization", "next.js", "react", "canvas"],
+  "keywords": ["camera", "motion-detection", "motion-visualization", "webgl", "glsl", "next.js", "react"],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
