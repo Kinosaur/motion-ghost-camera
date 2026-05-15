@@ -18,9 +18,11 @@ interface VideoControls {
 interface ControlsProps {
   sensitivity: number;
   trailLength: number;
+  rainAmount: number;
   mode: VisualMode;
   onSensitivityChange: (v: number) => void;
   onTrailLengthChange: (v: number) => void;
+  onRainAmountChange: (v: number) => void;
   onModeChange: (m: VisualMode) => void;
   onStop: () => void;
   onInteract: () => void;
@@ -28,8 +30,8 @@ interface ControlsProps {
 }
 
 export default function Controls({
-  sensitivity, trailLength, mode,
-  onSensitivityChange, onTrailLengthChange, onModeChange,
+  sensitivity, trailLength, rainAmount, mode,
+  onSensitivityChange, onTrailLengthChange, onRainAmountChange, onModeChange,
   onStop, onInteract, videoControls,
 }: ControlsProps) {
   return (
@@ -72,11 +74,20 @@ export default function Controls({
         <div className="flex flex-col gap-6">
           <Slider
             label="Sensitivity"
-            hint={mode === 'rain' ? 'rain amount' : 'detection level'}
+            hint="detection level"
             value={sensitivity}
             onChange={onSensitivityChange}
             onInteract={onInteract}
           />
+          {mode === 'rain' && (
+            <Slider
+              label="Amount"
+              hint="rain density"
+              value={rainAmount}
+              onChange={onRainAmountChange}
+              onInteract={onInteract}
+            />
+          )}
           <Slider
             label="Trail"
             hint={mode === 'rain' ? 'rain speed' : 'trace persistence'}

@@ -9,10 +9,10 @@ const ANALYSIS_H = 180;
 const MASK_W     = 80;
 const MASK_H     = 45;
 const BG_LEARN   = 0.05;
-const COL_MAX     = 240;   // max columns (Sensitivity=100)
-const COL_SPACING = 3;     // px between trail dots
-const TRAIL_PX    = 9;     // fixed trail length — head + 2 fading dots
-const HIT_FRAMES  = 18;    // frames a column stays frozen after impact
+const COL_MAX    = 240;   // max columns ever allocated
+const TRAIL_DOTS = 3;     // head + 2 fading dots
+const TRAIL_GAP  = 2;     // px between trail dots
+const HIT_FRAMES = 18;    // frames frozen after body impact
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type ErrorType  = 'denied' | 'no-camera' | 'unsupported';
@@ -21,9 +21,10 @@ export type VisualMode = 'trace' | 'rain';
 interface MotionPixel { px: number; py: number; intensity: number }
 
 interface Column {
-  x:        number;  // screen-x (recomputed each frame from activeCount)
+  xNorm:    number;  // [0,1] normalized x — random, persistent across frames
+  x:        number;  // screen-x = xNorm * W, computed each frame
   headY:    number;  // leading pixel Y (moves down)
-  speedVar: number;  // multiplier 0.7–1.3 — baked at spawn, varies columns naturally
+  speedVar: number;  // multiplier 0.7–1.3 — baked at spawn for natural variation
   hitTimer: number;  // >0 = frozen after hitting a body
   hitY:     number;  // Y where the impact happened
 }
@@ -145,6 +146,7 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
 
   const sensitivityRef = useRef(30);
   const trailRef       = useRef(50);
+  const rainAmountRef  = useRef(50);
   const modeRef        = useRef<VisualMode>('trace');
 
   // Rain — column simulation state
@@ -158,6 +160,7 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
 
   const [sensitivity, setSensitivity] = useState(30);
   const [trailLength, setTrailLength] = useState(50);
+  const [rainAmount,  setRainAmount]  = useState(50);
   const [mode, setMode]               = useState<VisualMode>('trace');
   const [controlsVisible, setControlsVisible] = useState(true);
 
@@ -167,6 +170,7 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
 
   useEffect(() => { sensitivityRef.current = sensitivity; }, [sensitivity]);
   useEffect(() => { trailRef.current       = trailLength; }, [trailLength]);
+  useEffect(() => { rainAmountRef.current  = rainAmount;  }, [rainAmount]);
   useEffect(() => { modeRef.current        = mode;        }, [mode]);
 
   useEffect(() => {
@@ -287,11 +291,6 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
       r.traceFBOA = createFBO(gl, r.traceTexA);
       r.traceFBOB = createFBO(gl, r.traceTexB);
       r.tracePing = false;
-      // Recompute column x positions on resize
-      const activeCols = colsRef.current.length;
-      for (let i = 0; i < activeCols; i++) {
-        colsRef.current[i].x = (i + 0.5) / activeCols * W;
-      }
     }
     resizeGL(window.innerWidth, window.innerHeight);
     window.addEventListener('resize', handleResize);
@@ -415,7 +414,7 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
       const cellH = H / MASK_H;
       const mask  = bodyMaskRef.current;
 
-      // Update body mask
+      // Update body mask — decay + accumulate motion
       for (let i = 0; i < mask.length; i++) mask[i] *= 0.94;
       for (const { px, py, intensity } of motion) {
         const cx = Math.min(Math.floor(px / cellW), MASK_W - 1);
@@ -427,38 +426,36 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
         }
       }
 
-      // Sensitivity slider → rain amount (60–240 columns)
-      // Trail slider     → rain speed  (10–22 px/frame base)
-      const activeCount = Math.round(60 + (sensitivityRef.current / 100) * 180);
-      const baseSpeed   = 10 + (trailRef.current / 100) * 12;
-      const maxPixels   = Math.floor(TRAIL_PX / COL_SPACING); // always 3 dots
-      const HIT_THRESH  = 0.20; // fixed body-hit sensitivity
+      // Sensitivity slider → motion detection threshold (shared with trace mode)
+      // Amount slider      → column count (30–240 drops)
+      // Trail slider       → fall speed   (12–28 px/frame)
+      const activeCount = Math.round(30 + (rainAmountRef.current / 100) * 210);
+      const baseSpeed   = 12 + (trailRef.current / 100) * 16;
+      const HIT_THRESH  = 0.20;
 
-      // Grow column pool when more columns needed
+      // Grow column pool with random x positions — more rain-like than even grid
       while (colsRef.current.length < activeCount) {
         colsRef.current.push({
+          xNorm:    Math.random(),
           x:        0,
-          headY:    Math.random() * H,          // staggered start — not all at top
-          speedVar: 0.7 + Math.random() * 0.6,  // 0.7–1.3 multiplier
+          headY:    Math.random() * H,
+          speedVar: 0.7 + Math.random() * 0.6,
           hitTimer: 0,
           hitY:     0,
         });
       }
 
-      // Recompute x every frame so columns stay evenly distributed
-      for (let i = 0; i < activeCount; i++) {
-        colsRef.current[i].x = (i + 0.5) / activeCount * W;
-      }
-
       // Simulate
       for (let ci = 0; ci < activeCount; ci++) {
-        const col   = colsRef.current[ci];
+        const col = colsRef.current[ci];
+        col.x     = col.xNorm * W;
         const speed = baseSpeed * col.speedVar;
 
         if (col.hitTimer > 0) {
           col.hitTimer--;
           if (col.hitTimer === 0) {
-            col.headY    = -(TRAIL_PX + Math.random() * H * 0.3);
+            col.xNorm    = Math.random();
+            col.headY    = -(TRAIL_DOTS * TRAIL_GAP + Math.random() * H * 0.3);
             col.speedVar = 0.7 + Math.random() * 0.6;
           }
         } else {
@@ -473,34 +470,33 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
             }
           }
 
-          if (col.headY > H + TRAIL_PX) {
-            col.headY    = -(TRAIL_PX + Math.random() * H * 0.1);
+          if (col.headY > H + TRAIL_DOTS * TRAIL_GAP) {
+            col.xNorm    = Math.random();
+            col.headY    = -(TRAIL_DOTS * TRAIL_GAP + Math.random() * H * 0.1);
             col.speedVar = 0.7 + Math.random() * 0.6;
           }
         }
       }
 
-      // Build vertex buffer
+      // Build vertex buffer — head + fading trail + hit spread
       const vd = colVertRef.current;
       let vc   = 0;
 
       for (let ci = 0; ci < activeCount; ci++) {
-        const col      = colsRef.current[ci];
-        const frozen   = col.hitTimer > 0;
-        const hitFade  = col.hitTimer / HIT_FRAMES;
-        const anchorY  = frozen ? col.hitY : col.headY;
+        const col     = colsRef.current[ci];
+        const frozen  = col.hitTimer > 0;
+        const hitFade = col.hitTimer / HIT_FRAMES;
+        const anchorY = frozen ? col.hitY : col.headY;
 
-        // Head + 2 fading dots above
-        for (let p = 0; p < maxPixels; p++) {
-          const py = anchorY - p * COL_SPACING;
+        for (let p = 0; p < TRAIL_DOTS; p++) {
+          const py = anchorY - p * TRAIL_GAP;
           if (py < -4 || py > H + 4) continue;
-          let bright = p === 0 ? 1.0 : (1 - p / maxPixels);
+          let bright = p === 0 ? 1.0 : (1 - p / TRAIL_DOTS) * 0.6;
           if (frozen) bright *= hitFade;
           vd[vc*3+0] = col.x;  vd[vc*3+1] = py;  vd[vc*3+2] = bright;
           vc++;
         }
 
-        // Hit spread — 5 pixels horizontal at impact point, fades with timer
         if (frozen) {
           for (let s = -2; s <= 2; s++) {
             const bright = hitFade * (1 - Math.abs(s) * 0.35);
@@ -512,7 +508,7 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
         }
       }
 
-      // Render directly to screen — clear + draw, no ping-pong needed
+      // Clear + draw directly to screen
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, W, H);
       gl.clearColor(0, 0, 0, 1);
@@ -606,9 +602,11 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
         <Controls
           sensitivity={sensitivity}
           trailLength={trailLength}
+          rainAmount={rainAmount}
           mode={mode}
           onSensitivityChange={setSensitivity}
           onTrailLengthChange={setTrailLength}
+          onRainAmountChange={setRainAmount}
           onModeChange={setMode}
           onStop={onStop}
           onInteract={revealControls}
