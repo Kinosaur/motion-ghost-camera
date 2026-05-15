@@ -37,27 +37,17 @@ uniform sampler2D u_motion;
 uniform float u_fade;
 in vec2 v_uv;
 out vec4 out_color;
-
-vec3 tempColor(float t){
-  if(t < 0.5){
-    float s = t * 2.0;
-    return vec3((40.0+s*20.0)/255.0, (100.0+s*100.0)/255.0, 1.0);
-  }
-  float s = (t-0.5)*2.0;
-  return vec3((60.0+s*195.0)/255.0, (200.0+s*20.0)/255.0, (255.0-s*175.0)/255.0);
-}
-
 void main(){
   vec3 trail   = texture(u_trail,  v_uv).rgb * u_fade;
   float intens = texture(u_motion, vec2(1.0-v_uv.x, v_uv.y)).r;
   if(intens > 0.004){
-    float a   = 0.28 + intens * 0.55;
-    trail     = min(trail + tempColor(intens) * a, vec3(1.0));
+    float a = 0.35 + intens * 0.65;
+    trail   = min(trail + vec3(a), vec3(1.0));
   }
   out_color = vec4(trail, 1.0);
 }`;
 
-// Ghost — chromatic aberration post-process
+// Ghost — pass-through (no colour post-process; output is pure B&W)
 const F_GHOST_POST = /* glsl */`#version 300 es
 precision highp float;
 uniform sampler2D u_scene;
@@ -66,13 +56,7 @@ uniform float u_strength;
 in vec2 v_uv;
 out vec4 out_color;
 void main(){
-  float intens = texture(u_motion, vec2(1.0-v_uv.x, v_uv.y)).r;
-  float shift  = max(0.0,(intens-0.35)/0.65) * u_strength;
-  vec2 dir     = normalize(v_uv - 0.5) * shift;
-  float r = texture(u_scene, v_uv + dir).r;
-  float g = texture(u_scene, v_uv      ).g;
-  float b = texture(u_scene, v_uv - dir).b;
-  out_color = vec4(r, g, b, 1.0);
+  out_color = vec4(texture(u_scene, v_uv).rgb, 1.0);
 }`;
 
 // Rain — fade previous frame
@@ -98,7 +82,7 @@ void main(){
   v_bloom = a_bloom;
   vec2 ndc = vec2(a_pos.x/u_res.x*2.0-1.0, 1.0-a_pos.y/u_res.y*2.0);
   gl_Position  = vec4(ndc, 0.0, 1.0);
-  gl_PointSize = a_bloom > 0.5 ? a_size*16.0+4.0 : max(a_size*3.5, 1.5);
+  gl_PointSize = a_bloom > 0.5 ? a_size*22.0+8.0 : a_size*14.0+5.0;
 }`;
 
 const F_RAIN_DROP = /* glsl */`#version 300 es
@@ -107,13 +91,14 @@ in float v_alpha;
 in float v_bloom;
 out vec4 out_color;
 void main(){
-  vec2  c    = gl_PointCoord - 0.5;
-  float d    = length(c) * 2.0;
+  // Compress x to make an elongated vertical streak
+  vec2  c  = vec2((gl_PointCoord.x - 0.5) * 3.5, gl_PointCoord.y - 0.5);
+  float d  = length(c) * 2.0;
   if(d > 1.0) discard;
   float glow = v_bloom > 0.5
-    ? pow(1.0-d, 1.6) * v_alpha
-    : (1.0-d*0.55)   * v_alpha * 0.6;
-  out_color = vec4(vec3(0.31, 0.59, 0.94) * glow, glow);
+    ? pow(1.0-d, 1.3) * v_alpha
+    : (1.0-d*0.45)    * v_alpha * 0.85;
+  out_color = vec4(vec3(glow), glow);
 }`;
 
 // ── WebGL helpers ──────────────────────────────────────────────────────────────
@@ -411,7 +396,7 @@ export default function GhostCamera({ onError, onStop }: Props) {
       gl.bindVertexArray(quadVAO);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-      // Step 2: post-process to screen with chromatic aberration
+      // Step 2: blit accumulation to screen
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.blendFunc(gl.ONE, gl.ZERO);
       gl.useProgram(ghostPostProg);
@@ -449,8 +434,8 @@ export default function GhostCamera({ onError, onStop }: Props) {
           y:     -8,
           vx:    (Math.random() - 0.5) * 0.5,
           vy:    3.5 + Math.random() * 3,
-          alpha: 0.25 + Math.random() * 0.45,
-          size:  0.5  + Math.random() * 0.7,
+          alpha: 0.55 + Math.random() * 0.40,
+          size:  0.7  + Math.random() * 0.8,
           bloom: false,
         });
       }
@@ -499,7 +484,7 @@ export default function GhostCamera({ onError, onStop }: Props) {
       const writeTex = ping ? r.rainTexB! : r.rainTexA!;
       r.rainPing     = !ping;
 
-      const fade = 0.82 + (trailRef.current / 100) * 0.10; // denser = more fade
+      const fade = 0.90 + (trailRef.current / 100) * 0.08;
 
       // Step 1: fade into write FBO
       gl.bindFramebuffer(gl.FRAMEBUFFER, writeFBO);
