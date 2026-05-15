@@ -4,6 +4,20 @@ All notable changes to Motion Ghost are documented here.
 
 ---
 
+## [2.1.0] — 2026-05-15
+
+### Added
+- **Video file upload.** Landing screen now has an "Upload video" button. Selecting a local video file runs the full motion-visualization pipeline on that footage instead of the live webcam. Scrub, play, and pause via new in-controls video player.
+- **Video controls in Controls panel.** When a video file is loaded: a scrubber (same style as existing sliders), a play/pause button, and a current-time / duration display appear below the sliders. Seeking resets the background model so detection stays accurate after jumps.
+- **Background subtraction detection model.** Motion is now detected relative to a running average background (`BG_LEARN = 0.05`) rather than a single previous frame. Camera noise and slow lighting drift are absorbed by the model; genuine movement stands out more clearly.
+
+### Changed
+- **"Ghost" mode renamed to "Trace".** `VisualMode` type value changed from `'ghost'` to `'trace'`. Labels updated across Controls, LandingScreen, and all GLSL shader identifiers. The previous name felt like a derivative reference; Trace describes what the mode actually does.
+- **Slider hint updated.** Trail slider hint text changed from "ghost persistence" to "trace persistence".
+- **Rain mode rewritten as pixel rain.** Replaced the particle physics system with a column-based pixel rain renderer. Fixed vertical lanes fall at even spacing; each column has a small 3-dot trail (head + 2 fading pixels). Sensitivity slider now controls rain density (60–240 active columns); Trail slider controls rain speed (10–22 px/frame). Columns freeze briefly with a small horizontal splash on body impact. Render is a direct clear+draw to screen each frame — no ping-pong FBO required.
+
+---
+
 ## [2.0.0] — 2026-05-13
 
 ### Breaking changes

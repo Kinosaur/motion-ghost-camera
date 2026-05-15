@@ -10,8 +10,12 @@ type AppState = 'landing' | 'camera' | 'error';
 export default function Page() {
   const [appState, setAppState] = useState<AppState>('landing');
   const [errorType, setErrorType] = useState<ErrorType | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
 
-  const handleOpen = () => setAppState('camera');
+  const handleOpen = (file?: File) => {
+    setVideoFile(file ?? null);
+    setAppState('camera');
+  };
 
   const handleError = (type: ErrorType) => {
     setErrorType(type);
@@ -21,6 +25,7 @@ export default function Page() {
   const handleStop = () => {
     setAppState('landing');
     setErrorType(null);
+    setVideoFile(null);
   };
 
   const handleRetry = () => {
@@ -32,7 +37,12 @@ export default function Page() {
     <main className="h-full w-full bg-black">
       {appState === 'landing' && <LandingScreen onOpen={handleOpen} />}
       {appState === 'camera' && (
-        <GhostCamera onError={handleError} onStop={handleStop} />
+        <GhostCamera
+          key={videoFile ? videoFile.name + videoFile.size : 'camera'}
+          onError={handleError}
+          onStop={handleStop}
+          videoFile={videoFile ?? undefined}
+        />
       )}
       {appState === 'error' && errorType && (
         <ErrorScreen errorType={errorType} onRetry={handleRetry} />

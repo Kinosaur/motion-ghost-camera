@@ -3,12 +3,13 @@
 import { useRef, useCallback } from 'react';
 
 interface LandingScreenProps {
-  onOpen: () => void;
+  onOpen: (file?: File) => void;
 }
 
 export default function LandingScreen({ onOpen }: LandingScreenProps) {
   const spotlightRef = useRef<HTMLDivElement>(null);
   const cursorRef    = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -29,6 +30,12 @@ export default function LandingScreen({ onOpen }: LandingScreenProps) {
     }
 
   }, []);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) onOpen(file);
+    e.target.value = '';
+  }, [onOpen]);
 
   return (
     <div
@@ -74,10 +81,10 @@ export default function LandingScreen({ onOpen }: LandingScreenProps) {
 
           {/* Mode hints — interactive */}
           <div className="flex items-center gap-2.5 pt-0.5">
-            {['Ghost', 'Rain'].map((m) => (
+            {['Trace', 'Rain'].map((m) => (
               <button
                 key={m}
-                onClick={onOpen}
+                onClick={() => onOpen()}
                 className="text-[9px] tracking-[0.22em] uppercase text-white/40
                   border border-white/10 rounded-full px-3.5 py-1.5
                   hover:text-white/80 hover:border-white/35 hover:bg-white/[0.06]
@@ -90,28 +97,55 @@ export default function LandingScreen({ onOpen }: LandingScreenProps) {
         </div>
 
         {/* Begin button */}
-        <button
-          onClick={onOpen}
-          aria-label="Open camera"
-          className="group relative flex items-center justify-center gap-4
-            min-w-[160px] min-h-[52px] px-8
-            border border-white/20 rounded-full
-            hover:border-white/50 hover:bg-white/[0.06]
-            active:scale-95
-            transition-all duration-300 ease-out
-            focus:outline-none focus-visible:ring-1 focus-visible:ring-white/30
-            animate-fade-in-delay cursor-none"
-        >
-          <span className="text-[11px] tracking-[0.35em] uppercase text-white/65
-            group-hover:text-white transition-colors duration-300">
-            Begin
-          </span>
-          <span
-            className="block h-px w-4 bg-white/35
-              group-hover:w-7 group-hover:bg-white/80
-              transition-all duration-400 ease-out"
+        <div className="flex flex-col items-center gap-3 animate-fade-in-delay">
+          <button
+            onClick={() => onOpen()}
+            aria-label="Open camera"
+            className="group relative flex items-center justify-center gap-4
+              min-w-[160px] min-h-[52px] px-8
+              border border-white/20 rounded-full
+              hover:border-white/50 hover:bg-white/[0.06]
+              active:scale-95
+              transition-all duration-300 ease-out
+              focus:outline-none focus-visible:ring-1 focus-visible:ring-white/30
+              cursor-none"
+          >
+            <span className="text-[11px] tracking-[0.35em] uppercase text-white/65
+              group-hover:text-white transition-colors duration-300">
+              Begin
+            </span>
+            <span
+              className="block h-px w-4 bg-white/35
+                group-hover:w-7 group-hover:bg-white/80
+                transition-all duration-400 ease-out"
+            />
+          </button>
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="video/*"
+            className="hidden"
+            onChange={handleFileChange}
           />
-        </button>
+
+          {/* Upload video button */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Upload video file"
+            className="flex items-center gap-2 min-h-[36px] px-4
+              text-[9px] tracking-[0.22em] uppercase text-white/28
+              hover:text-white/60 active:text-white/80
+              transition-colors duration-200 cursor-none focus:outline-none"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 7V2M2.5 4.5L5 2L7.5 4.5"/>
+              <path d="M1 9h8"/>
+            </svg>
+            Upload video
+          </button>
+        </div>
 
       </div>
 
