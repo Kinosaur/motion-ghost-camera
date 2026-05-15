@@ -33,7 +33,7 @@ export default function Controls({
       <div className="max-w-sm mx-auto flex flex-col gap-7">
 
         {/* ── Mode selector ── */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-center gap-12">
           {MODES.map((m) => (
             <button
               key={m.id}
@@ -118,10 +118,10 @@ function Slider({ label, hint, value, onChange, onInteract }: {
     <div className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between">
         <div className="flex items-baseline gap-2.5">
-          <span className="text-[10px] tracking-[0.22em] uppercase text-white/55">{label}</span>
-          <span className="text-[9px] tracking-[0.12em] text-white/20">{hint}</span>
+          <span className="text-[10px] tracking-[0.22em] uppercase text-white/80">{label}</span>
+          <span className="text-[9px] tracking-[0.12em] text-white/45">{hint}</span>
         </div>
-        <span className="text-[10px] tabular-nums text-white/35">{value}</span>
+        <span className="text-[10px] tabular-nums text-white/65">{value}</span>
       </div>
       <div className="py-2 -my-2">
         <input
@@ -131,15 +131,15 @@ function Slider({ label, hint, value, onChange, onInteract }: {
           aria-label={label}
           style={fillStyle}
           className="
-            w-full h-[3px] rounded-full appearance-none cursor-pointer
+            w-full h-[4px] rounded-full appearance-none cursor-pointer
             [&::-webkit-slider-thumb]:appearance-none
-            [&::-webkit-slider-thumb]:w-[18px] [&::-webkit-slider-thumb]:h-[18px]
+            [&::-webkit-slider-thumb]:w-[22px] [&::-webkit-slider-thumb]:h-[22px]
             [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white
             [&::-webkit-slider-thumb]:cursor-pointer
-            [&::-webkit-slider-thumb]:shadow-[0_0_0_1px_rgba(0,0,0,0.3),0_0_10px_rgba(255,255,255,0.3)]
+            [&::-webkit-slider-thumb]:shadow-[0_0_0_1px_rgba(0,0,0,0.3),0_0_12px_rgba(255,255,255,0.45)]
             [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:duration-150
             [&::-webkit-slider-thumb]:active:scale-110
-            [&::-moz-range-thumb]:w-[18px] [&::-moz-range-thumb]:h-[18px]
+            [&::-moz-range-thumb]:w-[22px] [&::-moz-range-thumb]:h-[22px]
             [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white
             [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer
           "
