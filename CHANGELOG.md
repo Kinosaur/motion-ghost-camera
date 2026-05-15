@@ -4,6 +4,21 @@ All notable changes to Motion Ghost are documented here.
 
 ---
 
+## [3.0.0] — 2026-05-15
+
+### Added
+- **Cursor redesign.** Landing screen cursor is now a small glowing dot inside a larger translucent ring — both centered precisely on the pointer. Replaces the plain 10px dot.
+- **Credits.** Trace mode credited to the work of [Anna Zhang](https://github.com/anna-zhang) in the README.
+
+### Changed
+- **Sensitivity slider restored.** In rain mode, Sensitivity now controls motion detection threshold again (same as Trace mode). Rain density is a dedicated **Amount** slider (30–240 drops), visible only in rain mode.
+- **Rain drops use random x positions.** Each drop has a persistent random normalized x (not an evenly-spaced grid) that makes the rain look natural. New random x is picked on every respawn or after a body hit.
+- **Rain speed range raised.** Fall speed now 12–28 px/frame (was 10–22).
+- **Text readability pass.** Increased opacity across all dimmer UI elements: upload button, privacy note, mode pills, inactive mode selector, slider hints, slider value readouts, video timestamp, and Exit button.
+- **README rewritten for v3.** Reflects current modes, controls, architecture, and credits.
+
+---
+
 ## [2.1.0] — 2026-05-15
 
 ### Added

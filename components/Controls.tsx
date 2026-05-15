@@ -56,7 +56,7 @@ export default function Controls({
                 min-w-[44px] min-h-[44px] justify-center px-4
                 cursor-pointer focus:outline-none
                 transition-all duration-200
-                ${mode === m.id ? 'text-white' : 'text-white/25 hover:text-white/55'}
+                ${mode === m.id ? 'text-white' : 'text-white/38 hover:text-white/65'}
               `}
             >
               <span className="text-[10px] tracking-[0.18em] uppercase">{m.label}</span>
@@ -119,7 +119,7 @@ export default function Controls({
             onClick={onStop}
             className="flex items-center gap-3 min-h-[44px] px-6
               text-[10px] tracking-[0.28em] uppercase
-              text-white/25 hover:text-white/65 active:text-white
+              text-white/40 hover:text-white/75 active:text-white
               transition-colors duration-200 cursor-pointer focus:outline-none"
             aria-label="Stop camera"
           >
@@ -161,7 +161,7 @@ function VideoScrubber({ isPlaying, currentTime, duration, onPlayPause, onSeek }
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <span className="text-[10px] tracking-[0.22em] uppercase text-white/55">Video</span>
-        <span className="text-[10px] tabular-nums text-white/35">
+        <span className="text-[10px] tabular-nums text-white/45">
           {fmt(currentTime)} / {fmt(duration)}
         </span>
       </div>
@@ -231,9 +231,9 @@ function Slider({ label, hint, value, onChange, onInteract }: {
       <div className="flex items-baseline justify-between">
         <div className="flex items-baseline gap-2.5">
           <span className="text-[10px] tracking-[0.22em] uppercase text-white/55">{label}</span>
-          <span className="text-[9px] tracking-[0.12em] text-white/20">{hint}</span>
+          <span className="text-[9px] tracking-[0.12em] text-white/35">{hint}</span>
         </div>
-        <span className="text-[10px] tabular-nums text-white/35">{value}</span>
+        <span className="text-[10px] tabular-nums text-white/45">{value}</span>
       </div>
       <div className="py-2 -my-2">
         <input

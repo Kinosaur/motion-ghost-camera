@@ -26,7 +26,7 @@ export default function LandingScreen({ onOpen }: LandingScreenProps) {
     }
 
     if (cursorRef.current) {
-      cursorRef.current.style.transform = `translate(${x - 5}px, ${y - 5}px)`;
+      cursorRef.current.style.transform = `translate(${x}px, ${y}px)`;
     }
 
   }, []);
@@ -49,13 +49,18 @@ export default function LandingScreen({ onOpen }: LandingScreenProps) {
         aria-hidden
       />
 
-      {/* Custom cursor — dot */}
+      {/* Custom cursor — dot + ring */}
       <div
         ref={cursorRef}
-        className="absolute top-0 left-0 w-2.5 h-2.5 rounded-full bg-white pointer-events-none z-50"
+        className="absolute top-0 left-0 pointer-events-none z-50"
         style={{ willChange: 'transform' }}
         aria-hidden
-      />
+      >
+        <div className="absolute w-9 h-9 rounded-full border border-white/20 -translate-x-1/2 -translate-y-1/2
+          transition-[width,height,opacity] duration-150" />
+        <div className="absolute w-1.5 h-1.5 rounded-full bg-white -translate-x-1/2 -translate-y-1/2
+          shadow-[0_0_8px_rgba(255,255,255,0.85)]" />
+      </div>
 
       {/* Ambient center glow */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden>
@@ -85,9 +90,9 @@ export default function LandingScreen({ onOpen }: LandingScreenProps) {
               <button
                 key={m}
                 onClick={() => onOpen()}
-                className="text-[9px] tracking-[0.22em] uppercase text-white/40
-                  border border-white/10 rounded-full px-3.5 py-1.5
-                  hover:text-white/80 hover:border-white/35 hover:bg-white/[0.06]
+                className="text-[9px] tracking-[0.22em] uppercase text-white/50
+                  border border-white/15 rounded-full px-3.5 py-1.5
+                  hover:text-white/85 hover:border-white/40 hover:bg-white/[0.06]
                   active:scale-95 transition-all duration-200 cursor-none focus:outline-none"
               >
                 {m}
@@ -135,8 +140,8 @@ export default function LandingScreen({ onOpen }: LandingScreenProps) {
             onClick={() => fileInputRef.current?.click()}
             aria-label="Upload video file"
             className="flex items-center gap-2 min-h-[36px] px-4
-              text-[9px] tracking-[0.22em] uppercase text-white/28
-              hover:text-white/60 active:text-white/80
+              text-[9px] tracking-[0.22em] uppercase text-white/45
+              hover:text-white/75 active:text-white/90
               transition-colors duration-200 cursor-none focus:outline-none"
           >
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -151,7 +156,7 @@ export default function LandingScreen({ onOpen }: LandingScreenProps) {
 
       {/* Privacy note */}
       <p className="absolute bottom-8 left-0 right-0 text-center
-        text-[9px] tracking-[0.22em] uppercase text-white/28 animate-fade-in-delay-2">
+        text-[9px] tracking-[0.22em] uppercase text-white/38 animate-fade-in-delay-2">
         All processing local · No data leaves your device
       </p>
     </div>
