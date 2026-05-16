@@ -2,6 +2,8 @@
 
 A camera that reveals only movement.
 
+Inspired by the work of [Anna Zhang](https://github.com/anna-zhang).
+
 ---
 
 ## What it does
@@ -23,7 +25,7 @@ Motion Ghost uses your webcam (or an uploaded video file) to detect motion in re
 
 **Rain mode**
 - **Sensitivity** — motion detection threshold
-- **Amount** — rain density (30–240 simultaneous drops)
+- **Amount** — rain density (80–400 simultaneous drops)
 - **Trail** — fall speed
 
 **Both modes**
@@ -55,7 +57,7 @@ Controls are locked during the processing pass to prevent interference.
 
 **Motion detection** runs on the CPU via Canvas 2D at 320×180. A running-average background subtraction model (`BG_LEARN = 0.05`) adapts each frame — camera noise and slow lighting drift are absorbed; genuine movement stands out clearly.
 
-**Trace** uses ping-pong framebuffers to accumulate a persistent trail texture. Each frame: fade the previous texture → composite new motion point sprites → chromatic aberration post-process pass over the full canvas.
+**Trace** uses two ping-pong framebuffer pairs — gesture and memory. Each frame: fade gesture → stamp fresh motion pixels at fixed brightness via `gl.MAX` blend → feed a blurred snapshot of gesture additively into memory → composite both layers to screen. The result is a sharp immediate trail over a dimmer, slower-fading ghost.
 
 **Rain** is a column simulation in JavaScript: each drop has a random x position (not a grid), a speed multiplier for natural variation, and a body-hit timer. Drops are uploaded as a vertex buffer each frame and rendered as `gl.POINTS` (3×3 px square sprites). No ping-pong FBO — canvas is cleared and redrawn each frame.
 
@@ -74,12 +76,6 @@ Open [http://localhost:3000](http://localhost:3000) and allow camera access when
 
 ---
 
-## Credits
+## License
 
-Trace mode inspired by the work of [Anna Zhang](https://github.com/anna-zhang).
-
----
-
-## Privacy
-
-All motion detection and rendering happens entirely in-browser. No video data is transmitted or stored anywhere.
+MIT — see [LICENSE](LICENSE).
