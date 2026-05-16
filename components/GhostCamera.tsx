@@ -50,7 +50,7 @@ in vec2 v_uv;
 out vec4 out_color;
 void main(){ out_color = texture(u_scene, v_uv) * u_fade; }`;
 
-// Trace — soft glowing point sprite with Gaussian falloff
+// Trace — dreamy soft bloom, all motion equal weight
 const V_TRACE_POINT = /* glsl */`#version 300 es
 layout(location=0) in vec2  a_pos;
 layout(location=1) in float a_intens;
@@ -60,20 +60,23 @@ void main(){
   v_intens = a_intens;
   vec2 ndc = vec2(a_pos.x / u_res.x * 2.0 - 1.0, 1.0 - a_pos.y / u_res.y * 2.0);
   gl_Position = vec4(ndc, 0.0, 1.0);
-  gl_PointSize = 6.0;
+  gl_PointSize = 9.0;
 }`;
 
+// Each motion pixel contributes equally — uniform glow, no speed variation.
+// Wide Gaussian lets neighboring pixels bloom into each other naturally.
+// Off-white (0.91,0.94,1.0) reads softer than pure white; easier on eyes.
 const F_TRACE_POINT = /* glsl */`#version 300 es
 precision highp float;
 in float v_intens;
 out vec4 out_color;
 void main(){
-  vec2 c = gl_PointCoord - 0.5;
-  float d = length(c) * 2.0;
+  vec2  c    = gl_PointCoord - 0.5;
+  float d    = length(c) * 2.0;
   if(d > 1.0) discard;
-  float glow   = exp(-d * d * 2.8);
-  float bright = (0.09 + v_intens * 0.28) * glow;
-  out_color = vec4(vec3(bright), 1.0);
+  float glow   = exp(-d * d * 1.4);    // wide, cloud-like spread
+  float bright = 0.048 * glow;          // fixed — all movement equal
+  out_color = vec4(vec3(0.91, 0.94, 1.0) * bright, 1.0);
 }`;
 
 // Pixel rain — square 3×3 point, brightness only
@@ -371,7 +374,9 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
       const writeTex = ping ? r.traceTexB! : r.traceTexA!;
       r.tracePing    = !ping;
 
-      const fade = 0.65 + (trailRef.current / 100) * 0.30;
+      // Fade range 0.72–0.93 — at max Trail, steady-state brightness ≈ 0.69
+      // (never fully white; prevents eye strain at high trail settings)
+      const fade = 0.72 + (trailRef.current / 100) * 0.21;
 
       gl.bindFramebuffer(gl.FRAMEBUFFER, writeFBO);
       gl.viewport(0, 0, W, H);
