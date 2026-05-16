@@ -1,4 +1,4 @@
-# Motion Ghost — v3
+# Motion Ghost — v3.1
 
 A camera that reveals only movement.
 
@@ -30,7 +30,15 @@ Motion Ghost uses your webcam (or an uploaded video file) to detect motion in re
 - Auto-hiding controls panel (3.5 s timeout, revealed on any interaction)
 - **Exit** — return to landing screen
 
-You can also **upload a video file** from the landing screen to run the full pipeline on recorded footage, with a scrubber and play/pause control.
+**Video file mode**
+
+Upload a video from the landing screen (max 90 seconds). The pipeline plays the file through once at real-time speed — WebGL renders the effect live as a preview — while `MediaRecorder` captures the canvas to MP4. After the pass:
+
+- The processed MP4 auto-plays and loops with a 1-second black screen between cycles
+- A **Download MP4** button appears in the controls panel
+- The scrubber and play/pause control the captured video
+
+Controls are locked during the processing pass to prevent interference.
 
 ---
 
@@ -50,6 +58,8 @@ You can also **upload a video file** from the landing screen to run the full pip
 **Trace** uses ping-pong framebuffers to accumulate a persistent trail texture. Each frame: fade the previous texture → composite new motion point sprites → chromatic aberration post-process pass over the full canvas.
 
 **Rain** is a column simulation in JavaScript: each drop has a random x position (not a grid), a speed multiplier for natural variation, and a body-hit timer. Drops are uploaded as a vertex buffer each frame and rendered as `gl.POINTS` (3×3 px square sprites). No ping-pong FBO — canvas is cleared and redrawn each frame.
+
+**Video capture** uses `canvas.captureStream(30)` fed into `MediaRecorder`. H.264 MP4 (`avc1.42E01E`) is requested first; the browser falls back to VP9 WebM if MP4 encoding is unavailable. The output blob is held in memory as a `blob:` URL — no server, no upload.
 
 ---
 

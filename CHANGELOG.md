@@ -4,6 +4,23 @@ All notable changes to Motion Ghost are documented here.
 
 ---
 
+## [3.1.0] — 2026-05-16
+
+### Added
+- **Video processing pipeline.** Uploaded videos now play through exactly once while the WebGL effect renders live. `MediaRecorder` captures the canvas output during this pass — H.264 MP4 preferred, VP9 WebM fallback.
+- **Download MP4 button.** After processing completes, a Download MP4 button appears in the controls panel. The file saves as `motion-ghost-YYYY-MM-DD.mp4`.
+- **Processing progress bar.** A thin white bar crawls across the top of the screen while the capture pass runs.
+- **Processing indicator.** The status pill shows an amber pulsing dot and "Processing" label during the capture pass; switches to blue "File" on completion.
+- **90-second hard cap.** Videos longer than 90 seconds are rejected immediately after metadata loads, with a full-screen error and a "Go back" link.
+- **Clean loop restart.** After the processed video ends, a 1-second black screen separates each replay — no jump cuts.
+
+### Changed
+- **Controls locked during processing.** Mode selector and all sliders are disabled while the capture pass runs. Exit remains active.
+- **Video playback switched to captured output.** After processing the WebGL canvas fades out and the captured MP4 takes over — the effect pipeline does not re-run on subsequent loops.
+- **Video controls wired to playback video.** Scrubber and play/pause in the controls panel now control the captured MP4, not the source file.
+
+---
+
 ## [3.0.0] — 2026-05-15
 
 ### Added
