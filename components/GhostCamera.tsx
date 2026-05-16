@@ -50,7 +50,7 @@ in vec2 v_uv;
 out vec4 out_color;
 void main(){ out_color = texture(u_scene, v_uv) * u_fade; }`;
 
-// Trace — dreamy soft bloom, all motion equal weight
+// Gesture — sharp 3px hard circle, fixed brightness (all motion equal)
 const V_TRACE_POINT = /* glsl */`#version 300 es
 layout(location=0) in vec2  a_pos;
 layout(location=1) in float a_intens;
@@ -60,23 +60,47 @@ void main(){
   v_intens = a_intens;
   vec2 ndc = vec2(a_pos.x / u_res.x * 2.0 - 1.0, 1.0 - a_pos.y / u_res.y * 2.0);
   gl_Position = vec4(ndc, 0.0, 1.0);
-  gl_PointSize = 9.0;
+  gl_PointSize = 3.0;
 }`;
 
-// Each motion pixel contributes equally — uniform glow, no speed variation.
-// Wide Gaussian lets neighboring pixels bloom into each other naturally.
-// Off-white (0.91,0.94,1.0) reads softer than pure white; easier on eyes.
 const F_TRACE_POINT = /* glsl */`#version 300 es
 precision highp float;
 in float v_intens;
 out vec4 out_color;
 void main(){
-  vec2  c    = gl_PointCoord - 0.5;
-  float d    = length(c) * 2.0;
-  if(d > 1.0) discard;
-  float glow   = exp(-d * d * 1.4);    // wide, cloud-like spread
-  float bright = 0.048 * glow;          // fixed — all movement equal
-  out_color = vec4(vec3(0.91, 0.94, 1.0) * bright, 1.0);
+  vec2 c = gl_PointCoord - 0.5;
+  if(length(c) > 0.5) discard;
+  out_color = vec4(vec3(0.70), 1.0);
+}`;
+
+// Memory feed — 5-tap blur of gesture texture, scaled way down; additive onto memory FBO
+const F_MEMORY_FEED = /* glsl */`#version 300 es
+precision mediump float;
+uniform sampler2D u_gesture;
+uniform vec2      u_texel;
+in vec2 v_uv;
+out vec4 out_color;
+void main(){
+  vec3 g =
+    texture(u_gesture, v_uv).rgb                               * 0.50 +
+    texture(u_gesture, v_uv + vec2( u_texel.x*2.0, 0.0)).rgb  * 0.125 +
+    texture(u_gesture, v_uv + vec2(-u_texel.x*2.0, 0.0)).rgb  * 0.125 +
+    texture(u_gesture, v_uv + vec2(0.0,  u_texel.y*2.0)).rgb  * 0.125 +
+    texture(u_gesture, v_uv + vec2(0.0, -u_texel.y*2.0)).rgb  * 0.125;
+  out_color = vec4(g * 0.007, 1.0);
+}`;
+
+// Composite — gesture (bright) + memory (dim ghost underneath) → screen
+const F_COMPOSITE = /* glsl */`#version 300 es
+precision mediump float;
+uniform sampler2D u_gesture;
+uniform sampler2D u_memory;
+in vec2 v_uv;
+out vec4 out_color;
+void main(){
+  vec3 g = texture(u_gesture, v_uv).rgb;
+  vec3 m = texture(u_memory,  v_uv).rgb;
+  out_color = vec4(min(g + m * 0.6, vec3(0.85)), 1.0);
 }`;
 
 // Pixel rain — square 3×3 point, brightness only
@@ -226,10 +250,14 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
 
     gl.enable(gl.BLEND);
 
-    let traceFadeProg: WebGLProgram, tracePointProg: WebGLProgram, pixRainProg: WebGLProgram;
+    let traceFadeProg: WebGLProgram, tracePointProg: WebGLProgram,
+        memFeedProg: WebGLProgram, compositeProg: WebGLProgram,
+        pixRainProg: WebGLProgram;
     try {
       traceFadeProg  = createProg(gl, V_QUAD,        F_TRACE_FADE);
       tracePointProg = createProg(gl, V_TRACE_POINT, F_TRACE_POINT);
+      memFeedProg    = createProg(gl, V_QUAD,        F_MEMORY_FEED);
+      compositeProg  = createProg(gl, V_QUAD,        F_COMPOSITE);
       pixRainProg    = createProg(gl, V_PIX_RAIN,    F_PIX_RAIN);
     } catch (e) {
       console.error(e);
@@ -239,7 +267,9 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
 
     const uTraceFade  = { scene: gl.getUniformLocation(traceFadeProg,  'u_scene'), fade: gl.getUniformLocation(traceFadeProg, 'u_fade') };
     const uTracePoint = { res:   gl.getUniformLocation(tracePointProg, 'u_res') };
-    const uPixRain    = { res:   gl.getUniformLocation(pixRainProg,    'u_res') };
+    const uMemFeed    = { gesture: gl.getUniformLocation(memFeedProg,  'u_gesture'), texel: gl.getUniformLocation(memFeedProg, 'u_texel') };
+    const uComposite  = { gesture: gl.getUniformLocation(compositeProg,'u_gesture'), memory: gl.getUniformLocation(compositeProg,'u_memory') };
+    const uPixRain    = { res:     gl.getUniformLocation(pixRainProg,  'u_res') };
 
     // Fullscreen quad VAO
     const quadVerts = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
@@ -274,13 +304,18 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
     gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 1, gl.FLOAT, false, COL_STRIDE, 2*4);
     gl.bindVertexArray(null);
 
-    // Trace ping-pong FBOs only (rain renders directly to screen)
+    // Two ping-pong pairs: gesture (fresh trail) + memory (ghost layer)
     const r = {
-      traceTexA: null as WebGLTexture | null,
-      traceTexB: null as WebGLTexture | null,
-      traceFBOA: null as WebGLFramebuffer | null,
-      traceFBOB: null as WebGLFramebuffer | null,
-      tracePing: false,
+      gestureTexA: null as WebGLTexture | null,
+      gestureTexB: null as WebGLTexture | null,
+      gestureFBOA: null as WebGLFramebuffer | null,
+      gestureFBOB: null as WebGLFramebuffer | null,
+      gesturePing: false,
+      memoryTexA:  null as WebGLTexture | null,
+      memoryTexB:  null as WebGLTexture | null,
+      memoryFBOA:  null as WebGLFramebuffer | null,
+      memoryFBOB:  null as WebGLFramebuffer | null,
+      memoryPing:  false,
     };
 
     const handleResize = () => resizeGL(window.innerWidth, window.innerHeight);
@@ -289,13 +324,18 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
       canvas.width  = W;
       canvas.height = H;
       gl.viewport(0, 0, W, H);
-      [r.traceTexA, r.traceTexB].forEach(t => t && gl.deleteTexture(t));
-      [r.traceFBOA, r.traceFBOB].forEach(f => f && gl.deleteFramebuffer(f));
-      r.traceTexA = createTex(gl, W, H, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
-      r.traceTexB = createTex(gl, W, H, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
-      r.traceFBOA = createFBO(gl, r.traceTexA);
-      r.traceFBOB = createFBO(gl, r.traceTexB);
-      r.tracePing = false;
+      [r.gestureTexA, r.gestureTexB, r.memoryTexA, r.memoryTexB].forEach(t => t && gl.deleteTexture(t));
+      [r.gestureFBOA, r.gestureFBOB, r.memoryFBOA, r.memoryFBOB].forEach(f => f && gl.deleteFramebuffer(f));
+      r.gestureTexA = createTex(gl, W, H, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
+      r.gestureTexB = createTex(gl, W, H, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
+      r.gestureFBOA = createFBO(gl, r.gestureTexA);
+      r.gestureFBOB = createFBO(gl, r.gestureTexB);
+      r.memoryTexA  = createTex(gl, W, H, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
+      r.memoryTexB  = createTex(gl, W, H, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
+      r.memoryFBOA  = createFBO(gl, r.memoryTexA);
+      r.memoryFBOB  = createFBO(gl, r.memoryTexB);
+      r.gesturePing = false;
+      r.memoryPing  = false;
     }
     resizeGL(window.innerWidth, window.innerHeight);
     window.addEventListener('resize', handleResize);
@@ -352,8 +392,9 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
 
       if (modeSwitched.current) {
         modeSwitched.current = false;
-        r.tracePing = false;
-        ([r.traceFBOA!, r.traceFBOB!]).forEach(fbo => {
+        r.gesturePing = false;
+        r.memoryPing  = false;
+        [r.gestureFBOA!, r.gestureFBOB!, r.memoryFBOA!, r.memoryFBOB!].forEach(fbo => {
           gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
           gl.clearColor(0, 0, 0, 1);
           gl.clear(gl.COLOR_BUFFER_BIT);
@@ -366,38 +407,46 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
       else               renderRain(W, H, motion);
     }
 
-    // ── Trace render ───────────────────────────────────────────────────────────
+    // ── Trace render — gesture + memory two-layer system ──────────────────────
     function renderTrace(W: number, H: number, motion: MotionPixel[]) {
-      const ping     = r.tracePing;
-      const readTex  = ping ? r.traceTexA! : r.traceTexB!;
-      const writeFBO = ping ? r.traceFBOB! : r.traceFBOA!;
-      const writeTex = ping ? r.traceTexB! : r.traceTexA!;
-      r.tracePing    = !ping;
+      const t = trailRef.current / 100;
 
-      // Fade range 0.72–0.93 — at max Trail, steady-state brightness ≈ 0.69
-      // (never fully white; prevents eye strain at high trail settings)
-      const fade = 0.72 + (trailRef.current / 100) * 0.21;
+      // Gesture fades in ~1–2s; memory fades in ~4–6s
+      // Trail slider stretches both ranges proportionally
+      const gestureFade = 0.962 + t * 0.015;   // 0.962–0.977
+      const memoryFade  = 0.990 + t * 0.004;   // 0.990–0.994
 
-      gl.bindFramebuffer(gl.FRAMEBUFFER, writeFBO);
+      // ── Gesture layer ──────────────────────────────────────────────────────
+      const gPing     = r.gesturePing;
+      const gReadTex  = gPing ? r.gestureTexA! : r.gestureTexB!;
+      const gWriteFBO = gPing ? r.gestureFBOB! : r.gestureFBOA!;
+      const gWriteTex = gPing ? r.gestureTexB! : r.gestureTexA!;
+      r.gesturePing   = !gPing;
+
+      // Gesture fade pass (overwrites)
+      gl.bindFramebuffer(gl.FRAMEBUFFER, gWriteFBO);
       gl.viewport(0, 0, W, H);
+      gl.blendEquation(gl.FUNC_ADD);
       gl.blendFunc(gl.ONE, gl.ZERO);
       gl.useProgram(traceFadeProg);
       gl.uniform1i(uTraceFade.scene, 0);
-      gl.uniform1f(uTraceFade.fade,  fade);
-      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, readTex);
+      gl.uniform1f(uTraceFade.fade,  gestureFade);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, gReadTex);
       gl.bindVertexArray(quadVAO);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
+      // Gesture motion pixels — MAX blend so fresh pixels always floor at 0.70
       if (motion.length > 0) {
         const tv = traceVertRef.current;
         const tc = Math.min(motion.length, ANALYSIS_W * ANALYSIS_H);
         for (let k = 0; k < tc; k++) {
           tv[k*3+0] = motion[k].px;
           tv[k*3+1] = motion[k].py;
-          tv[k*3+2] = motion[k].intensity;
+          tv[k*3+2] = 0; // unused — brightness is fixed in shader
         }
         gl.bindBuffer(gl.ARRAY_BUFFER, traceBuf);
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, tv.subarray(0, tc * 3));
+        gl.blendEquation(gl.MAX);
         gl.blendFunc(gl.ONE, gl.ONE);
         gl.useProgram(tracePointProg);
         gl.uniform2f(uTracePoint.res, W, H);
@@ -405,12 +454,43 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
         gl.drawArrays(gl.POINTS, 0, tc);
       }
 
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      // ── Memory layer ───────────────────────────────────────────────────────
+      const mPing     = r.memoryPing;
+      const mReadTex  = mPing ? r.memoryTexA! : r.memoryTexB!;
+      const mWriteFBO = mPing ? r.memoryFBOB! : r.memoryFBOA!;
+      const mWriteTex = mPing ? r.memoryTexB! : r.memoryTexA!;
+      r.memoryPing    = !mPing;
+
+      // Memory fade pass (overwrites)
+      gl.bindFramebuffer(gl.FRAMEBUFFER, mWriteFBO);
+      gl.blendEquation(gl.FUNC_ADD);
       gl.blendFunc(gl.ONE, gl.ZERO);
       gl.useProgram(traceFadeProg);
       gl.uniform1i(uTraceFade.scene, 0);
-      gl.uniform1f(uTraceFade.fade,  1.0);
-      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, writeTex);
+      gl.uniform1f(uTraceFade.fade,  memoryFade);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, mReadTex);
+      gl.bindVertexArray(quadVAO);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      // Feed: add blurred gesture (0.007×) additively into memory
+      gl.blendEquation(gl.FUNC_ADD);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.useProgram(memFeedProg);
+      gl.uniform1i(uMemFeed.gesture, 0);
+      gl.uniform2f(uMemFeed.texel,   1.0 / W, 1.0 / H);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, gWriteTex);
+      gl.bindVertexArray(quadVAO);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      // ── Composite to screen ────────────────────────────────────────────────
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.blendEquation(gl.FUNC_ADD);
+      gl.blendFunc(gl.ONE, gl.ZERO);
+      gl.useProgram(compositeProg);
+      gl.uniform1i(uComposite.gesture, 0);
+      gl.uniform1i(uComposite.memory,  1);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, gWriteTex);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, mWriteTex);
       gl.bindVertexArray(quadVAO);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
