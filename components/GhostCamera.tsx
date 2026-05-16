@@ -342,6 +342,11 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
 
     let aborted = false;
 
+    // Background warmup — learn fast for first N frames, suppress all output
+    let warmupFrames    = 0;
+    const WARMUP        = 60;   // ~1s at 60fps — screen stays black, bg settles silently
+    const BG_LEARN_FAST = 0.15; // 3× faster than normal during warmup
+
     // ── rAF loop ───────────────────────────────────────────────────────────────
     function animate() {
       rafRef.current = requestAnimationFrame(animate);
@@ -361,6 +366,7 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
           bg[j] = curr[i]; bg[j+1] = curr[i+1]; bg[j+2] = curr[i+2];
         }
         bgRef.current = bg;
+        warmupFrames  = 0;  // reset warmup every time bg is re-initialized (seek, mode switch)
         return;
       }
 
@@ -368,6 +374,8 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
       const threshold = 75 - (sensitivityRef.current / 100) * 70;
       const scaleX    = W / ANALYSIS_W;
       const scaleY    = H / ANALYSIS_H;
+      const warming   = warmupFrames < WARMUP;
+      const learnRate = warming ? BG_LEARN_FAST : BG_LEARN;
       const motion: MotionPixel[] = [];
 
       for (let i = 0, j = 0; i < curr.length; i += 4, j += 3) {
@@ -375,7 +383,7 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
         const dg   = curr[i+1] - bg[j+1];
         const db   = curr[i+2] - bg[j+2];
         const diff = Math.abs(dr) + Math.abs(dg) + Math.abs(db);
-        if (diff > threshold) {
+        if (!warming && diff > threshold) {
           const idx       = i / 4;
           const col       = idx % ANALYSIS_W;
           const row       = Math.floor(idx / ANALYSIS_W);
@@ -385,10 +393,12 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
             intensity: Math.min(diff / 280, 1),
           });
         }
-        bg[j]   += dr * BG_LEARN;
-        bg[j+1] += dg * BG_LEARN;
-        bg[j+2] += db * BG_LEARN;
+        bg[j]   += dr * learnRate;
+        bg[j+1] += dg * learnRate;
+        bg[j+2] += db * learnRate;
       }
+
+      warmupFrames++;
 
       if (modeSwitched.current) {
         modeSwitched.current = false;
@@ -401,6 +411,9 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
         });
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       }
+
+      // Suppress all visual output while background is warming up
+      if (warming) return;
 
       const m = modeRef.current;
       if (m === 'trace') renderTrace(W, H, motion);
