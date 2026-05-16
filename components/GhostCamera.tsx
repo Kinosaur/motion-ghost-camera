@@ -187,20 +187,38 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
   // Trace
   const traceVertRef = useRef(new Float32Array(ANALYSIS_W * ANALYSIS_H * 3));
 
+  // Video processing pipeline refs
+  const videoPhaseRef     = useRef<'processing' | 'playback'>('processing');
+  const recorderRef       = useRef<MediaRecorder | null>(null);
+  const playbackRef       = useRef<HTMLVideoElement>(null);
+  const processedUrlRef   = useRef<string | null>(null);
+  const pbRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [sensitivity, setSensitivity] = useState(30);
   const [trailLength, setTrailLength] = useState(50);
   const [rainAmount,  setRainAmount]  = useState(65);
   const [mode, setMode]               = useState<VisualMode>('trace');
   const [controlsVisible, setControlsVisible] = useState(true);
 
-  const [isPlaying, setIsPlaying]   = useState(false);
+  const [isPlaying, setIsPlaying]     = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration]     = useState(0);
+  const [duration, setDuration]       = useState(0);
+
+  // Video processing pipeline
+  const [videoPhase, setVideoPhase]           = useState<'processing' | 'playback'>('processing');
+  const [processProgress, setProcessProgress] = useState(0);
+  const [processedUrl, setProcessedUrl]       = useState<string | null>(null);
+  const [videoTooLong, setVideoTooLong]       = useState(false);
+  const [pbPlaying, setPbPlaying]             = useState(false);
+  const [pbTime, setPbTime]                   = useState(0);
+  const [pbDuration, setPbDuration]           = useState(0);
+  const [pbBlackScreen, setPbBlackScreen]     = useState(false);
 
   useEffect(() => { sensitivityRef.current = sensitivity; }, [sensitivity]);
   useEffect(() => { trailRef.current       = trailLength; }, [trailLength]);
   useEffect(() => { rainAmountRef.current  = rainAmount;  }, [rainAmount]);
   useEffect(() => { modeRef.current        = mode;        }, [mode]);
+  useEffect(() => { videoPhaseRef.current  = videoPhase;  }, [videoPhase]);
 
   useEffect(() => {
     colsRef.current      = [];
@@ -232,6 +250,37 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
     if (!v) return;
     v.currentTime = time;
     bgRef.current = null;
+  }, []);
+
+  const handleDownload = useCallback(() => {
+    const url = processedUrlRef.current;
+    if (!url) return;
+    const date = new Date().toISOString().split('T')[0];
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `motion-ghost-${date}.mp4`;
+    a.click();
+  }, []);
+
+  const togglePbPlay = useCallback(() => {
+    const pb = playbackRef.current;
+    if (!pb) return;
+    if (pb.paused) pb.play().catch(() => {}); else pb.pause();
+  }, []);
+
+  const handlePbSeek = useCallback((time: number) => {
+    const pb = playbackRef.current;
+    if (pb) pb.currentTime = time;
+  }, []);
+
+  const handlePbEnded = useCallback(() => {
+    setPbBlackScreen(true);
+    if (pbRestartTimerRef.current) clearTimeout(pbRestartTimerRef.current);
+    pbRestartTimerRef.current = setTimeout(() => {
+      setPbBlackScreen(false);
+      const pb = playbackRef.current;
+      if (pb) { pb.currentTime = 0; pb.play().catch(() => {}); }
+    }, 1000);
   }, []);
 
   // ── Main effect ────────────────────────────────────────────────────────────
@@ -350,6 +399,7 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
     // ── rAF loop ───────────────────────────────────────────────────────────────
     function animate() {
       rafRef.current = requestAnimationFrame(animate);
+      if (videoPhaseRef.current === 'playback') return;
       if (video.readyState < 2) return;
 
       const W = canvas.width;
@@ -629,14 +679,64 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
     let objectUrl: string | null = null;
 
     if (videoFile) {
-      objectUrl = URL.createObjectURL(videoFile);
+      objectUrl  = URL.createObjectURL(videoFile);
       video.src  = objectUrl;
-      video.loop = true;
-      video.addEventListener('loadedmetadata', () => setDuration(video.duration), { once: true });
-      video.addEventListener('timeupdate',     () => setCurrentTime(video.currentTime));
-      video.addEventListener('play',           () => setIsPlaying(true));
-      video.addEventListener('pause',          () => setIsPlaying(false));
+      video.loop = false;  // single-pass processing
+
+      let tooLong = false;
+
+      video.addEventListener('loadedmetadata', () => {
+        if (video.duration > 90) {
+          tooLong = true;
+          setVideoTooLong(true);
+          return;
+        }
+        setDuration(video.duration);
+      }, { once: true });
+
+      video.addEventListener('timeupdate', () => {
+        setCurrentTime(video.currentTime);
+        if (video.duration > 0)
+          setProcessProgress(Math.round((video.currentTime / video.duration) * 100));
+      });
+
       video.addEventListener('loadeddata', () => {
+        if (tooLong) return;
+
+        // Set up MediaRecorder on WebGL canvas — prefer H.264 MP4
+        const captureStream = canvas.captureStream(30);
+        const mimes = [
+          'video/mp4; codecs="avc1.42E01E"',
+          'video/mp4; codecs="avc1"',
+          'video/mp4',
+          'video/webm; codecs=vp9',
+          'video/webm',
+        ];
+        let mimeType = '';
+        for (const m of mimes) {
+          try { if (MediaRecorder.isTypeSupported(m)) { mimeType = m; break; } } catch {}
+        }
+
+        const recorder = new MediaRecorder(captureStream, mimeType ? { mimeType } : {});
+        recorderRef.current = recorder;
+        const chunks: BlobPart[] = [];
+
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+        recorder.onstop = () => {
+          cancelAnimationFrame(rafRef.current);
+          const blob = new Blob(chunks, { type: mimeType || 'video/mp4' });
+          const url  = URL.createObjectURL(blob);
+          processedUrlRef.current = url;
+          setProcessedUrl(url);
+          videoPhaseRef.current = 'playback';
+          setVideoPhase('playback');
+        };
+
+        video.addEventListener('ended', () => {
+          if (recorder.state === 'recording') recorder.stop();
+        }, { once: true });
+
+        recorder.start(100);  // collect data every 100 ms
         animate();
         video.play().catch(() => {});
       }, { once: true });
@@ -662,14 +762,19 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
     return () => {
       aborted = true;
       cancelAnimationFrame(rafRef.current);
+      if (pbRestartTimerRef.current) clearTimeout(pbRestartTimerRef.current);
       window.removeEventListener('resize', handleResize);
       if (objectUrl) URL.revokeObjectURL(objectUrl);
-      else streamRef.current?.getTracks().forEach(t => t.stop());
+      if (processedUrlRef.current) URL.revokeObjectURL(processedUrlRef.current);
+      if (!videoFile) streamRef.current?.getTracks().forEach(t => t.stop());
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── JSX ────────────────────────────────────────────────────────────────────
+  const isProcessing = !!videoFile && videoPhase === 'processing';
+  const isPlayback   = !!videoFile && videoPhase === 'playback';
+
   return (
     <div
       className="relative w-full h-full bg-black overflow-hidden"
@@ -678,26 +783,80 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
     >
       <video ref={videoRef} className="hidden" playsInline muted />
       <canvas ref={analysisRef} className="hidden" />
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
-      {/* Live / File indicator */}
+      {/* WebGL canvas — fades out once processing finishes */}
+      <canvas ref={canvasRef} className={`absolute inset-0 w-full h-full transition-opacity duration-700
+        ${isPlayback ? 'opacity-0 pointer-events-none' : 'opacity-100'}`} />
+
+      {/* Processed video — fades in after processing */}
+      {processedUrl && (
+        <video
+          ref={playbackRef}
+          src={processedUrl}
+          playsInline
+          muted
+          autoPlay
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700
+            ${isPlayback ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+          onPlay={() => setPbPlaying(true)}
+          onPause={() => setPbPlaying(false)}
+          onTimeUpdate={() => { const pb = playbackRef.current; if (pb) setPbTime(pb.currentTime); }}
+          onLoadedMetadata={() => { const pb = playbackRef.current; if (pb) setPbDuration(pb.duration); }}
+          onEnded={handlePbEnded}
+        />
+      )}
+
+      {/* Black screen on loop restart */}
+      {pbBlackScreen && <div className="absolute inset-0 bg-black z-10" />}
+
+      {/* Processing progress bar — thin white line at top */}
+      {isProcessing && !videoTooLong && (
+        <div className="absolute top-0 left-0 right-0 h-[2px] z-20 bg-white/10">
+          <div
+            className="h-full bg-white/55 transition-[width] duration-300 ease-out"
+            style={{ width: `${processProgress}%` }}
+          />
+        </div>
+      )}
+
+      {/* Video too long error */}
+      {videoTooLong && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-30 bg-black/90 gap-5">
+          <p className="text-[11px] tracking-[0.22em] uppercase text-white/60">
+            Video exceeds 90-second limit
+          </p>
+          <button
+            onClick={onStop}
+            className="text-[10px] tracking-[0.28em] uppercase text-white/35
+              hover:text-white/65 transition-colors duration-200 cursor-pointer focus:outline-none"
+          >
+            Go back
+          </button>
+        </div>
+      )}
+
+      {/* Indicator pill */}
       <div className="absolute top-5 left-5 pointer-events-none select-none">
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full
           bg-black/55 backdrop-blur-sm border border-white/[0.07]">
           <span className={`block w-1.5 h-1.5 rounded-full ${
-            videoFile
+            isProcessing
+              ? 'bg-amber-400/80 shadow-[0_0_5px_rgba(251,191,36,0.6)] animate-pulse'
+              : videoFile
               ? 'bg-blue-400/80 shadow-[0_0_5px_rgba(96,165,250,0.6)]'
               : 'bg-green-400/80 shadow-[0_0_5px_rgba(74,222,128,0.6)]'
           }`} />
           <span className="text-[9px] tracking-[0.25em] uppercase text-white/50">
-            {videoFile ? 'File' : 'Live'}
+            {isProcessing ? 'Processing' : videoFile ? 'File' : 'Live'}
           </span>
         </div>
       </div>
 
-      {/* Controls */}
+      {/* Controls — always visible during processing, auto-hide otherwise */}
       <div className={`absolute inset-x-0 bottom-0 transition-all duration-500 ease-out
-        ${controlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3 pointer-events-none'}`}
+        ${(controlsVisible || isProcessing)
+          ? 'opacity-100 translate-y-0'
+          : 'opacity-0 translate-y-3 pointer-events-none'}`}
       >
         <Controls
           sensitivity={sensitivity}
@@ -710,8 +869,11 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
           onModeChange={setMode}
           onStop={onStop}
           onInteract={revealControls}
-          videoControls={videoFile
-            ? { isPlaying, currentTime, duration, onPlayPause: togglePlayPause, onSeek: handleSeek }
+          locked={isProcessing}
+          onDownload={isPlayback ? handleDownload : undefined}
+          videoControls={isPlayback
+            ? { isPlaying: pbPlaying, currentTime: pbTime, duration: pbDuration,
+                onPlayPause: togglePbPlay, onSeek: handlePbSeek }
             : undefined}
         />
       </div>

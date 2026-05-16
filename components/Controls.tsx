@@ -27,30 +27,33 @@ interface ControlsProps {
   onStop: () => void;
   onInteract: () => void;
   videoControls?: VideoControls;
+  locked?: boolean;
+  onDownload?: () => void;
 }
 
 export default function Controls({
   sensitivity, trailLength, rainAmount, mode,
   onSensitivityChange, onTrailLengthChange, onRainAmountChange, onModeChange,
-  onStop, onInteract, videoControls,
+  onStop, onInteract, videoControls, locked = false, onDownload,
 }: ControlsProps) {
   return (
     <div
       className="w-full px-6 pb-10 pt-16
         bg-gradient-to-t from-black/95 via-black/60 to-transparent"
-      onPointerMove={onInteract}
-      onPointerDown={onInteract}
+      onPointerMove={locked ? undefined : onInteract}
+      onPointerDown={locked ? undefined : onInteract}
     >
       <div className="max-w-sm mx-auto flex flex-col gap-7">
 
         {/* ── Mode selector ── */}
-        <div className="flex items-center justify-between">
+        <div className={`flex items-center justify-between transition-opacity duration-300 ${locked ? 'opacity-25 pointer-events-none' : ''}`}>
           {MODES.map((m) => (
             <button
               key={m.id}
               onClick={() => { onModeChange(m.id); onInteract(); }}
               aria-label={`${m.label} mode`}
               aria-pressed={mode === m.id}
+              disabled={locked}
               className={`
                 flex flex-col items-center gap-2
                 min-w-[44px] min-h-[44px] justify-center px-4
@@ -71,13 +74,14 @@ export default function Controls({
         <div className="h-px bg-white/[0.06]" />
 
         {/* ── Sliders ── */}
-        <div className="flex flex-col gap-6">
+        <div className={`flex flex-col gap-6 transition-opacity duration-300 ${locked ? 'opacity-25 pointer-events-none' : ''}`}>
           <Slider
             label="Sensitivity"
             hint="detection level"
             value={sensitivity}
             onChange={onSensitivityChange}
             onInteract={onInteract}
+            disabled={locked}
           />
           {mode === 'rain' && (
             <Slider
@@ -86,6 +90,7 @@ export default function Controls({
               value={rainAmount}
               onChange={onRainAmountChange}
               onInteract={onInteract}
+              disabled={locked}
             />
           )}
           <Slider
@@ -94,10 +99,11 @@ export default function Controls({
             value={trailLength}
             onChange={onTrailLengthChange}
             onInteract={onInteract}
+            disabled={locked}
           />
         </div>
 
-        {/* ── Video controls ── */}
+        {/* ── Video controls (playback) ── */}
         {videoControls && (
           <>
             <div className="h-px bg-white/[0.06]" />
@@ -111,6 +117,27 @@ export default function Controls({
               />
             </div>
           </>
+        )}
+
+        {/* ── Download button (appears after processing) ── */}
+        {onDownload && (
+          <div className="flex justify-center">
+            <button
+              onClick={onDownload}
+              className="flex items-center gap-2.5 min-h-[44px] px-6
+                text-[10px] tracking-[0.28em] uppercase
+                text-white/50 hover:text-white/80 active:text-white
+                transition-colors duration-200 cursor-pointer focus:outline-none"
+              aria-label="Download processed video as MP4"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"
+                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 1v5.5M2.5 4.5L5 7.5L7.5 4.5"/>
+                <path d="M1 9h8"/>
+              </svg>
+              Download MP4
+            </button>
+          </div>
         )}
 
         {/* ── Exit ── */}
@@ -211,12 +238,13 @@ function VideoScrubber({ isPlaying, currentTime, duration, onPlayPause, onSeek }
 }
 
 // ── Slider ────────────────────────────────────────────────────────────────────
-function Slider({ label, hint, value, onChange, onInteract }: {
+function Slider({ label, hint, value, onChange, onInteract, disabled = false }: {
   label: string;
   hint: string;
   value: number;
   onChange: (v: number) => void;
   onInteract: () => void;
+  disabled?: boolean;
 }) {
   const fillStyle = {
     background: `linear-gradient(to right,
@@ -241,6 +269,7 @@ function Slider({ label, hint, value, onChange, onInteract }: {
           onChange={e => onChange(Number(e.target.value))}
           onPointerDown={onInteract}
           aria-label={label}
+          disabled={disabled}
           style={fillStyle}
           className="
             w-full h-[3px] rounded-full appearance-none cursor-pointer
