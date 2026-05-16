@@ -1,7 +1,7 @@
 {
   "name": "motion-ghost-camera",
-  "version": "2.0.0",
-  "private": false,
+  "version": "3.1.0",
+  "private": true,
   "license": "MIT",
   "description": "A camera that only reveals movement. GPU-accelerated motion visualization with Ghost and Rain modes. All processing local, nothing leaves your device.",
   "author": "Kaung Khant Lin",
@@ -22,7 +22,6 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",

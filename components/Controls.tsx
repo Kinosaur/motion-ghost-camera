@@ -57,7 +57,7 @@ export default function Controls({
               className={`
                 flex flex-col items-center gap-2
                 min-w-[44px] min-h-[44px] justify-center px-4
-                cursor-pointer focus:outline-none
+                cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/30 rounded
                 transition-all duration-200
                 ${mode === m.id ? 'text-white' : 'text-white/38 hover:text-white/65'}
               `}
@@ -127,10 +127,10 @@ export default function Controls({
               className="flex items-center gap-2.5 min-h-[44px] px-6
                 text-[10px] tracking-[0.28em] uppercase
                 text-white/50 hover:text-white/80 active:text-white
-                transition-colors duration-200 cursor-pointer focus:outline-none"
+                transition-colors duration-200 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/30 rounded"
               aria-label="Download processed video as MP4"
             >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"
                 stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 1v5.5M2.5 4.5L5 7.5L7.5 4.5"/>
                 <path d="M1 9h8"/>
@@ -147,7 +147,7 @@ export default function Controls({
             className="flex items-center gap-3 min-h-[44px] px-6
               text-[10px] tracking-[0.28em] uppercase
               text-white/40 hover:text-white/75 active:text-white
-              transition-colors duration-200 cursor-pointer focus:outline-none"
+              transition-colors duration-200 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/30 rounded"
             aria-label="Stop camera"
           >
             <span className="block h-px w-3 bg-current transition-all duration-300 group-hover:w-5" />
@@ -219,7 +219,7 @@ function VideoScrubber({ isPlaying, currentTime, duration, onPlayPause, onSeek }
           aria-label={isPlaying ? 'Pause' : 'Play'}
           className="flex items-center justify-center min-w-[44px] min-h-[44px]
             text-white/45 hover:text-white/85 active:text-white
-            transition-colors duration-200 cursor-pointer focus:outline-none"
+            transition-colors duration-200 cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-white/30 rounded"
         >
           {isPlaying ? (
             <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">

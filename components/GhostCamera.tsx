@@ -200,10 +200,6 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
   const [mode, setMode]               = useState<VisualMode>('trace');
   const [controlsVisible, setControlsVisible] = useState(true);
 
-  const [isPlaying, setIsPlaying]     = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration]       = useState(0);
-
   // Video processing pipeline
   const [videoPhase, setVideoPhase]           = useState<'processing' | 'playback'>('processing');
   const [processProgress, setProcessProgress] = useState(0);
@@ -238,19 +234,6 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
     revealControls();
     return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
   }, [revealControls]);
-
-  const togglePlayPause = useCallback(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (v.paused) v.play().catch(() => {}); else v.pause();
-  }, []);
-
-  const handleSeek = useCallback((time: number) => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.currentTime = time;
-    bgRef.current = null;
-  }, []);
 
   const handleDownload = useCallback(() => {
     const url = processedUrlRef.current;
@@ -398,8 +381,8 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
 
     // ── rAF loop ───────────────────────────────────────────────────────────────
     function animate() {
+      if (videoPhaseRef.current === 'playback') return;  // stop the loop entirely
       rafRef.current = requestAnimationFrame(animate);
-      if (videoPhaseRef.current === 'playback') return;
       if (video.readyState < 2) return;
 
       const W = canvas.width;
@@ -689,22 +672,26 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
         if (video.duration > 90) {
           tooLong = true;
           setVideoTooLong(true);
-          return;
         }
-        setDuration(video.duration);
       }, { once: true });
 
       video.addEventListener('timeupdate', () => {
-        setCurrentTime(video.currentTime);
         if (video.duration > 0)
           setProcessProgress(Math.round((video.currentTime / video.duration) * 100));
       });
+
+      // Bad file / unsupported codec → exit cleanly instead of hanging
+      video.addEventListener('error', () => onError('unsupported'), { once: true });
 
       video.addEventListener('loadeddata', () => {
         if (tooLong) return;
 
         // Set up MediaRecorder on WebGL canvas — prefer H.264 MP4
-        const captureStream = canvas.captureStream(30);
+        // captureStream is absent on iOS Safari — fail gracefully
+        let captureStream: MediaStream;
+        try { captureStream = canvas.captureStream(30); }
+        catch { onError('unsupported'); return; }
+
         const mimes = [
           'video/mp4; codecs="avc1.42E01E"',
           'video/mp4; codecs="avc1"',
@@ -717,12 +704,15 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
           try { if (MediaRecorder.isTypeSupported(m)) { mimeType = m; break; } } catch {}
         }
 
-        const recorder = new MediaRecorder(captureStream, mimeType ? { mimeType } : {});
+        let recorder: MediaRecorder;
+        try { recorder = new MediaRecorder(captureStream, mimeType ? { mimeType } : {}); }
+        catch { onError('unsupported'); return; }
         recorderRef.current = recorder;
         const chunks: BlobPart[] = [];
 
         recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
         recorder.onstop = () => {
+          if (aborted) return;  // component unmounted — discard chunks
           cancelAnimationFrame(rafRef.current);
           const blob = new Blob(chunks, { type: mimeType || 'video/mp4' });
           const url  = URL.createObjectURL(blob);
@@ -761,6 +751,7 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
 
     return () => {
       aborted = true;
+      if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
       cancelAnimationFrame(rafRef.current);
       if (pbRestartTimerRef.current) clearTimeout(pbRestartTimerRef.current);
       window.removeEventListener('resize', handleResize);
@@ -811,7 +802,14 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
 
       {/* Processing progress bar — thin white line at top */}
       {isProcessing && !videoTooLong && (
-        <div className="absolute top-0 left-0 right-0 h-[2px] z-20 bg-white/10">
+        <div
+          className="absolute top-0 left-0 right-0 h-[2px] z-20 bg-white/10"
+          role="progressbar"
+          aria-valuenow={processProgress}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Processing video"
+        >
           <div
             className="h-full bg-white/55 transition-[width] duration-300 ease-out"
             style={{ width: `${processProgress}%` }}
@@ -836,7 +834,12 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
       )}
 
       {/* Indicator pill */}
-      <div className="absolute top-5 left-5 pointer-events-none select-none">
+      <div
+        className="absolute top-5 left-5 pointer-events-none select-none"
+        role="status"
+        aria-live="polite"
+        aria-label={isProcessing ? 'Processing video' : videoFile ? 'Video file loaded' : 'Live camera active'}
+      >
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full
           bg-black/55 backdrop-blur-sm border border-white/[0.07]">
           <span className={`block w-1.5 h-1.5 rounded-full ${
