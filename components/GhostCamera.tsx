@@ -9,7 +9,7 @@ const ANALYSIS_H = 180;
 const MASK_W     = 80;
 const MASK_H     = 45;
 const BG_LEARN   = 0.05;
-const COL_MAX    = 240;   // max columns ever allocated
+const COL_MAX    = 400;   // max columns ever allocated
 const TRAIL_DOTS = 3;     // head + 2 fading dots
 const TRAIL_GAP  = 2;     // px between trail dots
 const HIT_FRAMES = 18;    // frames frozen after body impact
@@ -50,7 +50,7 @@ in vec2 v_uv;
 out vec4 out_color;
 void main(){ out_color = texture(u_scene, v_uv) * u_fade; }`;
 
-// Trace — crisp circle point sprite
+// Trace — soft glowing point sprite with Gaussian falloff
 const V_TRACE_POINT = /* glsl */`#version 300 es
 layout(location=0) in vec2  a_pos;
 layout(location=1) in float a_intens;
@@ -60,7 +60,7 @@ void main(){
   v_intens = a_intens;
   vec2 ndc = vec2(a_pos.x / u_res.x * 2.0 - 1.0, 1.0 - a_pos.y / u_res.y * 2.0);
   gl_Position = vec4(ndc, 0.0, 1.0);
-  gl_PointSize = 3.0;
+  gl_PointSize = 6.0;
 }`;
 
 const F_TRACE_POINT = /* glsl */`#version 300 es
@@ -69,9 +69,11 @@ in float v_intens;
 out vec4 out_color;
 void main(){
   vec2 c = gl_PointCoord - 0.5;
-  if(length(c) > 0.5) discard;
-  float b = 0.45 + v_intens * 0.55;
-  out_color = vec4(vec3(b), 1.0);
+  float d = length(c) * 2.0;
+  if(d > 1.0) discard;
+  float glow   = exp(-d * d * 2.8);
+  float bright = (0.09 + v_intens * 0.28) * glow;
+  out_color = vec4(vec3(bright), 1.0);
 }`;
 
 // Pixel rain — square 3×3 point, brightness only
@@ -146,7 +148,7 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
 
   const sensitivityRef = useRef(30);
   const trailRef       = useRef(50);
-  const rainAmountRef  = useRef(50);
+  const rainAmountRef  = useRef(65);
   const modeRef        = useRef<VisualMode>('trace');
 
   // Rain — column simulation state
@@ -160,7 +162,7 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
 
   const [sensitivity, setSensitivity] = useState(30);
   const [trailLength, setTrailLength] = useState(50);
-  const [rainAmount,  setRainAmount]  = useState(50);
+  const [rainAmount,  setRainAmount]  = useState(65);
   const [mode, setMode]               = useState<VisualMode>('trace');
   const [controlsVisible, setControlsVisible] = useState(true);
 
@@ -335,7 +337,7 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
           const col       = idx % ANALYSIS_W;
           const row       = Math.floor(idx / ANALYSIS_W);
           motion.push({
-            px: (ANALYSIS_W - 1 - col) * scaleX,
+            px: (videoFile ? col : (ANALYSIS_W - 1 - col)) * scaleX,
             py: row * scaleY,
             intensity: Math.min(diff / 280, 1),
           });
@@ -429,7 +431,7 @@ export default function GhostCamera({ onError, onStop, videoFile }: Props) {
       // Sensitivity slider → motion detection threshold (shared with trace mode)
       // Amount slider      → column count (30–240 drops)
       // Trail slider       → fall speed   (12–28 px/frame)
-      const activeCount = Math.round(30 + (rainAmountRef.current / 100) * 210);
+      const activeCount = Math.round(80 + (rainAmountRef.current / 100) * 320);
       const baseSpeed   = 12 + (trailRef.current / 100) * 16;
       const HIT_THRESH  = 0.20;
 
